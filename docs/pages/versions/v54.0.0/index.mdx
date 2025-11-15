@@ -1,128 +1,279 @@
----
-title: Reference
-hideTOC: true
----
-
-import { BookOpen02Icon } from '@expo/styleguide-icons/outline/BookOpen02Icon';
-
-import { BoxLink } from '~/ui/components/BoxLink';
-import { Collapsible } from '~/ui/components/Collapsible';
-import RedirectNotification from '~/ui/components/RedirectNotification';
+// App.js - Profi Bodenleger App (Einzeldatei für Expo Snack)
+import React, { useState, useEffect } from 'react';
 import {
-  AndroidIOSCompatibilityTable,
-  ReactNativeCompatibilityTable,
-} from '~/ui/components/SDKTables';
-import { Terminal } from '~/ui/components/Snippet';
-import { CODE } from '~/ui/components/Text';
+  View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList,
+  ImageBackground, ScrollView, Alert, Switch
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
-<RedirectNotification>
-  The page you are looking for does not exist in this SDK version. It may have been deprecated or
-  added to a newer SDK version.
-</RedirectNotification>
-
-The Expo SDK provides access to device and system functionality such as contacts, camera, gyroscope, GPS location, and so on, in the form of packages. You can install any Expo SDK package using the `npx expo install` command. For example, three different packages are installed using the following command:
-
-<Terminal cmd={['$ npx expo install expo-camera expo-contacts expo-sensors']} />
-
-After installing one or more packages, you can import them into your JavaScript code:
-
-```js
-import { CameraView } from 'expo-camera';
-import * as Contacts from 'expo-contacts';
-import { Gyroscope } from 'expo-sensors';
-```
-
-This allows you to write [`Contacts.getContactsAsync()`](./sdk/contacts#contactsgetcontactsasynccontactquery) and read the contacts from the device, read the gyroscope sensor to detect device movement, or start the phone's camera and take photos.
-
-## All Expo SDK packages work in any React Native app
-
-Expo apps are React Native apps, so all Expo SDK packages work in any React Native app with the `expo` package installed and configured. The easiest way to create a React Native app with support for Expo SDK packages is to use `create-expo-app`. However, you can also add Expo SDK support to an existing React Native app with the `npx install-expo-modules` command.
-
-<Terminal
-  cmd={['# Create a project named my-app', '$ npx create-expo-app my-app --template bare-minimum']}
-  cmdCopy="npx create-expo-app my-app --template bare-minimum"
-/>
-
-<BoxLink
-  title="Install Expo SDK packages in existing React Native apps"
-  href="/bare/installing-expo-modules"
-  description={
-    <>
-      Learn more about configuring projects created with{' '}
-      <CODE>npx @react-native-community/cli@latest init</CODE> to Expo SDK packages.
-    </>
+// ---------- Daten: Bodenarten, Tools, Montage ----------
+const FLOOR_TYPES = [
+  {
+    id: 'parkett', title: 'Parkett',
+    image: 'https://images.unsplash.com/photo-1549187774-b4b9b6a5e3dc?auto=format&fit=crop&w=1200&q=80',
+    defaultCutPercent: 7, unitArea: 1.2, unitLabel: 'Paket ≈1.2 m²',
+    tools: [
+      'Schwingschleifer / Tellerschleifer', 'Schleifpapier', 'Spachtelmasse',
+      'Schlagklotz & Zugeisen', 'Abstandskeile', 'Fachmesser / Stichsäge',
+      'Tischsäge / Cupsäge', 'Gasnagler / Akkuschrauber'
+    ],
+    montage: [
+      'Untergrund schleifen, spachteln und grundieren.',
+      'Hohlstellen prüfen und ggf. Stipper setzen.',
+      'Dehnungsfugen mit Abstandskeilen sichern.',
+      'Reihen verlegen, Kanten sauber zuschneiden.',
+      'Sockelleisten mit Gasnagler/Akkuschrauber montieren.'
+    ]
+  },
+  {
+    id: 'laminat', title: 'Laminat',
+    image: 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80',
+    defaultCutPercent: 5, unitArea: 2.13, unitLabel: 'Paket ≈2.13 m²',
+    tools: ['Handschleifer', 'Spachtel', 'Abstandskeile', 'Zugeisen', 'Laminatschneider', 'Akkuschrauber'],
+    montage: ['Untergrund prüfen, Trittschalldämmung legen.', 'Laminat schwimmend verlegen.', 'Abstand zur Wand einhalten.', 'Sockelleisten montieren.']
+  },
+  {
+    id: 'vinyl', title: 'Vinyl',
+    image: 'https://images.unsplash.com/photo-1618221690124-5f7f4a3b2e45?auto=format&fit=crop&w=1200&q=80',
+    defaultCutPercent: 6, unitArea: 2.0, unitLabel: 'Rolle / Paket (m²)',
+    tools: ['Fachmesser', 'Andrückrolle', 'Lineal', 'Spachtel', 'Akkuschrauber'],
+    montage: ['Untergrund spachteln/grundieren.', 'Kleber nach Hersteller (z.B. Uzin KE 2000 S) auftragen.', 'Planken/Bahnen verlegen, Andrücken.']
+  },
+  {
+    id: 'pvc', title: 'PVC-Fliesen',
+    image: 'https://images.unsplash.com/photo-1519791883285-d6e5b63f9a9d?auto=format&fit=crop&w=1200&q=80',
+    defaultCutPercent: 6, unitArea: 0.36, unitLabel: 'Fliese ≈0.36 m²',
+    tools: ['Fachmesser', 'Andrückrolle', 'Lineal', 'Spachtel', 'Akkuschrauber'],
+    montage: ['Untergrund ausgleichen/grundieren.', 'Fliesen mit passendem Kleber verkleben.', 'Sorgfältig andrücken.']
+  },
+  {
+    id: 'fliesen', title: 'Fliesen',
+    image: 'https://images.unsplash.com/photo-1505691723518-36a3a03d63d5?auto=format&fit=crop&w=1200&q=80',
+    defaultCutPercent: 12, unitArea: 0.25, unitLabel: 'Fliese (m²)',
+    tools: ['Fliesenschneider', 'Zahnkelle', 'Gummihammer', 'Wasserwaage', 'Schwamm'],
+    montage: ['Untergrund ausgleichen.', 'Fliesenkleber mit Zahnkelle auftragen.', 'Fliesen verlegen & fugen.']
+  },
+  {
+    id: 'teppich', title: 'Teppich',
+    image: 'https://images.unsplash.com/photo-1600585153820-1f3b3b3f6cbb?auto=format&fit=crop&w=1200&q=80',
+    defaultCutPercent: 8, unitArea: 1.0, unitLabel: 'Lfm / Bahn',
+    tools: ['Fachmesser / Trapezklingen', 'Hacken-Klingen', 'Teppichklammern', 'Große Andrückrolle (Anwalzen)', 'Anreibhammer'],
+    montage: ['Untergrund spachteln/grundieren.', 'Unterlage + Bahnen verlegen.', 'Bahnen zuschneiden, anwalzen, Nähte mit Anreibhammer reiben.']
   }
-  Icon={BookOpen02Icon}
-/>
+];
 
-<BoxLink
-  title="Use libraries"
-  description="Learn how to install Expo SDK packages in your project."
-  href="/workflow/using-libraries"
-  Icon={BookOpen02Icon}
-/>
+// ---------- Hilfsfunktionen ----------
+const ceil = (v) => Math.ceil(v);
 
-## Using pre-release versions
+// ---------- App ----------
+export default function App() {
+  const [selected, setSelected] = useState(0);
+  const [len, setLen] = useState('');
+  const [wid, setWid] = useState('');
+  const [cut, setCut] = useState(String(FLOOR_TYPES[0].defaultCutPercent));
+  const [pricePerUnit, setPricePerUnit] = useState('');
+  const [result, setResult] = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [showTools, setShowTools] = useState(true);
+  const [premium, setPremium] = useState(false);
 
-New Expo SDK versions are released three times each year. Between these releases, we publish pre-release versions of the `expo` package and all of the Expo SDK packages. Pre-releases are not considered stable and should only be used if you are comfortable with the risk of encountering bugs or other issues.
+  useEffect(()=> { loadProjects(); }, []);
+  useEffect(()=> { setCut(String(FLOOR_TYPES[selected].defaultCutPercent)); }, [selected]);
 
-### Canary releases
+  const calculate = () => {
+    if (!len || !wid) { Alert.alert('Fehler', 'Bitte Länge und Breite eingeben'); return; }
+    const l = parseFloat(len.replace(',', '.'));
+    const w = parseFloat(wid.replace(',', '.'));
+    const v = parseFloat(cut.replace(',', '.'))/100;
+    if (isNaN(l) || isNaN(w) || isNaN(v)) { Alert.alert('Fehler','Ungültige Eingabe'); return; }
+    const area = l * w * (1 + v);
+    const unitArea = FLOOR_TYPES[selected].unitArea;
+    const units = ceil(area / unitArea);
+    const total = pricePerUnit && !isNaN(parseFloat(pricePerUnit)) ? (units * parseFloat(pricePerUnit)).toFixed(2) + ' €' : null;
+    setResult({ area: area.toFixed(2), units, total });
+  };
 
-Canary releases represent a snapshot of the state of the `main` branch at the time they are published. Canary package versions include `-canary` in the name, along with the date and commit hash, such as `54.0.0-canary-20240418-8d74597`. To install the latest canary release:
+  const saveProject = async () => {
+    if (!result) { Alert.alert('Fehler','Erst Berechnen'); return; }
+    const p = {
+      id: Date.now().toString(), floor: FLOOR_TYPES[selected].title,
+      len, wid, cut, pricePerUnit, result, date: new Date().toISOString()
+    };
+    const newList = [p, ...projects].slice(0,50);
+    setProjects(newList);
+    await AsyncStorage.setItem('@bf_projects', JSON.stringify(newList));
+    Alert.alert('Gespeichert', 'Projekt lokal gespeichert');
+  };
 
-<Terminal
-  cmd={[
-    '# Install the alpha version of expo and its related packages',
-    '$ npm install expo@canary && npx expo install --fix',
-  ]}
-  cmdCopy="npm install expo@canary && npx expo install --fix"
-/>
+  const loadProjects = async () => {
+    try {
+      const raw = await AsyncStorage.getItem('@bf_projects');
+      if (raw) setProjects(JSON.parse(raw));
+    } catch(e){ console.log(e); }
+  };
 
-You can often use pre-release versions of individual packages with stable releases of the Expo SDK. There may occasionally be incompatibilities or other issues that arise in canary-quality releases. You may want to [silence dependency validation warnings](/more/expo-cli/#configuring-dependency-validation) if you opt in to the canary package and once you have verified that it works well for your use cases.
+  const exportPDF = async () => {
+    if (!result) { Alert.alert('Fehler','Erst Berechnen'); return; }
+    const f = FLOOR_TYPES[selected];
+    const html = `
+      <h1>Angebot — ${f.title}</h1>
+      <p>Raum: ${len}m × ${wid}m</p>
+      <p>Verschnitt: ${cut}%</p>
+      <p>Fläche: ${result.area} m²</p>
+      <p>Einheiten: ${result.units} (${f.unitLabel})</p>
+      <p>Preis: ${result.total ?? '—'}</p>
+      <h3>Werkzeuge</h3><ul>${f.tools.map(t=>`<li>${t}</li>`).join('')}</ul>
+      <h3>Montagehinweise</h3><ol>${f.montage.map(m=>`<li>${m}</li>`).join('')}</ol>
+    `;
+    try {
+      const { uri } = await Print.printToFileAsync({ html });
+      if (uri) {
+        if (!(await Sharing.isAvailableAsync())) {
+          Alert.alert('PDF fertig', `Datei: ${uri}`);
+        } else {
+          await Sharing.shareAsync(uri);
+        }
+      }
+    } catch(e) { Alert.alert('Fehler', 'PDF nicht erstellt'); console.log(e); }
+  };
 
-### Beta releases
+  const clearAll = async () => {
+    await AsyncStorage.removeItem('@bf_projects');
+    setProjects([]);
+    Alert.alert('Gelöscht', 'Alle gespeicherten Projekte wurden entfernt');
+  };
 
-Before each Expo SDK release, we publish beta versions of the `expo` package and all of the Expo SDK packages. Beta releases are considered much more stable than canary releases, and we encourage developers to try them out on their apps and share their feedback. Beta releases use the `beta` tag on npm and follow the instructions in the related [changelog](https://expo.dev/changelog) post.
+  // ---------- UI ----------
+  const floor = FLOOR_TYPES[selected];
 
-## Each Expo SDK version depends on a React Native version
+  return (
+    <ScrollView style={styles.page}>
+      <Text style={styles.header}>Profi Bodenleger App</Text>
 
-<ReactNativeCompatibilityTable />
+      {/* Carousel / Kacheln */}
+      <View style={styles.carousel}>
+        <FlatList
+          data={FLOOR_TYPES}
+          horizontal
+          keyExtractor={i=>i.id}
+          showsHorizontalScrollIndicator={false}
+          renderItem={({item, index}) => (
+            <TouchableOpacity onPress={()=> setSelected(index)} style={[styles.tile, selected===index && styles.tileActive]}>
+              <ImageBackground source={{uri:item.image}} style={styles.tileImg} imageStyle={{borderRadius:10}}>
+                <View style={styles.tileOverlay}>
+                  <Text style={styles.tileTitle}>{item.title}</Text>
+                </View>
+              </ImageBackground>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
 
-### Additional information
+      {/* Rechner Card */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>{floor.title} — Rechner</Text>
+        <TextInput style={styles.input} placeholder="Länge (m)" keyboardType="numeric" value={len} onChangeText={setLen} />
+        <TextInput style={styles.input} placeholder="Breite (m)" keyboardType="numeric" value={wid} onChangeText={setWid} />
+        <TextInput style={styles.input} placeholder="Verschnitt (%)" keyboardType="numeric" value={cut} onChangeText={setCut} />
+        <TextInput style={styles.input} placeholder={`Preis pro Einheit (€) — ${floor.unitLabel}`} keyboardType="numeric" value={pricePerUnit} onChangeText={setPricePerUnit} />
+        <View style={{flexDirection:'row', gap:10, justifyContent:'space-between'}}>
+          <TouchableOpacity onPress={calculate} style={styles.btn}><Text style={styles.btnText}>Berechnen</Text></TouchableOpacity>
+          <TouchableOpacity onPress={saveProject} style={[styles.btn, styles.btnAlt]}><Text style={styles.btnText}>Speichern</Text></TouchableOpacity>
+          <TouchableOpacity onPress={exportPDF} style={[styles.btn, styles.btnAlt2]}><Text style={styles.btnText}>PDF</Text></TouchableOpacity>
+        </View>
 
-<Collapsible summary="Expo SDK policy for tracking React Native releases">
+        {result && (
+          <View style={styles.result}>
+            <Text style={styles.resultText}>Benötigte Fläche: {result.area} m²</Text>
+            <Text style={styles.resultText}>Einheiten: {result.units} ({floor.unitLabel})</Text>
+            {result.total && <Text style={styles.resultText}>Preis: {result.total}</Text>}
+          </View>
+        )}
+      </View>
 
-- Expo SDK versions are released three times each year, and each Expo SDK release targets a single React Native version. This is typically the latest stable version at the time of the release.
-- The release cadence of React Native has varied over its history and it is currently on pace for six releases in 2025. While on this cadence, you can expect that there will be an Expo SDK version for every second React Native release.
-- Pre-release versions of the upcoming Expo SDK will include support for the latest version of React Native quickly, usually the same day it is released. A member of the Expo SDK team works on the React Native releases team for each release, and is responsible for continuously updating the React Native version in the Expo repository, verifying compatibility, and reporting regressions back to the team at Meta.
+      {/* Tools & Montage */}
+      <View style={styles.card}>
+        <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+          <Text style={styles.cardTitle}>{floor.title} — Werkzeuge & Montage</Text>
+          <View style={{flexDirection:'row', alignItems:'center'}}>
+            <Text style={{marginRight:8}}>Tools</Text>
+            <Switch value={showTools} onValueChange={setShowTools} />
+          </View>
+        </View>
 
-</Collapsible>
+        {showTools && (
+          <>
+            <Text style={styles.sub}>Werkzeugliste</Text>
+            {floor.tools.map((t,i)=>(
+              <View key={i} style={styles.toolRow}>
+                <Text>• {t}</Text>
+              </View>
+            ))}
 
-<Collapsible summary=" Why not release a new Expo SDK version immediately for every React Native release?">
+            <Text style={[styles.sub,{marginTop:8}]}>Montagehinweise</Text>
+            {floor.montage.map((m,i)=>(
+              <View key={i} style={styles.toolRow}>
+                <Text>{i+1}. {m}</Text>
+              </View>
+            ))}
+          </>
+        )}
+      </View>
 
-At Expo, we have found that releasing three major version provides a good balance of stability and innovation for developers depending on our open source tools. Expo and Meta work closely together on releases, and we will keep improving our processes to get the latest Expo and React Native features to you as quickly as possible.
+      {/* Checkliste */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Checkliste (Tipps)</Text>
+        <View style={styles.checkRow}><Text>• Hohlstellen prüfen (Stipper setzen)</Text></View>
+        <View style={styles.checkRow}><Text>• Untergrund schleifen & spachteln</Text></View>
+        <View style={styles.checkRow}><Text>• Grundierung auftragen</Text></View>
+        <View style={styles.checkRow}><Text>• Werkzeuge bereitstellen (Tischsäge, Gasnagler...)</Text></View>
+        <View style={{marginTop:8, flexDirection:'row', gap:8}}>
+          <TouchableOpacity onPress={()=> Alert.alert('Hinweis','Haken setzen beim Einsatz auf der Baustelle')} style={styles.btn}><Text style={styles.btnText}>Anwenden</Text></TouchableOpacity>
+          <TouchableOpacity onPress={clearAll} style={[styles.btn, styles.btnAlt]}><Text style={styles.btnText}>Projekte löschen</Text></TouchableOpacity>
+        </View>
+      </View>
 
-</Collapsible>
+      {/* Gespeicherte Projekte */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Gespeicherte Projekte</Text>
+        {projects.length===0 ? <Text style={{textAlign:'center', padding:8}}>Keine Projekte</Text> :
+          projects.map(p=>(
+            <View key={p.id} style={styles.project}>
+              <Text style={{fontWeight:'600'}}>{p.floor} — {p.result.area} m²</Text>
+              <Text>{new Date(p.date).toLocaleString()}</Text>
+            </View>
+          ))
+        }
+      </View>
 
-<Collapsible summary="What if I need a change from the latest React Native version and it's not yet in an Expo SDK release?"
->
-We work closely with the team at Meta to ensure that any urgent fixes are included in the React Native version used by the latest Expo SDK. If your issue won't be cherrypicked into an existing release because it is more niche, or it involves a breaking change, then you have two options:
+      <View style={{height:60}} />
+    </ScrollView>
+  );
+}
 
-1. Use [`patch-package`](https://github.com/ds300/patch-package) to pull in the fix.
-2. Use a [pre-release version of the Expo SDK](#using-pre-release-versions). An ([example](https://expo.dev/changelog/react-native-78)).
-
-</Collapsible>
-
-<Collapsible summary="Can I use an older version of React Native with the latest Expo SDK?">
-
-Packages in the Expo SDK are intended to support the target React Native version for that SDK. Typically, they will not support older versions of React Native, but they may. When a new version of React Native is released, the latest versions of the Expo SDK packages are typically updated to support it. However, this may take weeks or more, depending on the extent of the changes in the release.
-
-</Collapsible>
-
-## Support for Android and iOS versions
-
-Each version of Expo SDK supports a minimum OS version of Android and iOS. For Android, the `compileSdkVersion` is defined which tells the [Gradle](https://developer.android.com/studio/build) which Android SDK version to use to compile the app. This also means that you can use the Android API features included in that SDK version and from the previous versions. For iOS, the [Xcode](https://developer.apple.com/news/upcoming-requirements/) tells the minimum Xcode SDK version to use to compile the app.
-
-<AndroidIOSCompatibilityTable />
-
-When deciding whether to upgrade your Expo SDK version, consider both Expo's SDK version and app store submission requirements, as described in the above table. Google Play Store and Apple App Store periodically increase their minimum required OS versions and API levels, which are required for new app submissions. Expo has no control over the app store requirements, and you should check [Google](https://developer.android.com/studio/build) and [Apple](https://developer.apple.com/news/upcoming-requirements/) for the current store submission requirements.
+// ---------- Styles ----------
+const styles = StyleSheet.create({
+  page: { flex:1, backgroundColor:'#f4f6fb', paddingTop:40, paddingHorizontal:12 },
+  header: { fontSize:24, fontWeight:'700', color:'#1F3A93', marginBottom:12, textAlign:'center' },
+  carousel: { height:140, marginBottom:12 },
+  tile: { width:140, height:120, marginRight:12, borderRadius:10, overflow:'hidden', borderWidth:2, borderColor:'transparent' },
+  tileActive: { borderColor:'#FF9500' },
+  tileImg: { width:'100%', height:'100%', justifyContent:'flex-end' },
+  tileOverlay: { backgroundColor:'rgba(0,0,0,0.25)', padding:6 },
+  tileTitle: { color:'#fff', fontWeight:'700', textAlign:'center' },
+  card: { backgroundColor:'#fff', borderRadius:12, padding:12, marginBottom:12, shadowColor:'#000', shadowOpacity:0.06, shadowRadius:6 },
+  cardTitle: { fontSize:18, fontWeight:'700', marginBottom:8, color:'#333' },
+  input: { borderWidth:1, borderColor:'#e0e0e0', borderRadius:8, padding:10, marginBottom:8, backgroundColor:'#fff' },
+  btn: { backgroundColor:'#1F3A93', paddingVertical:10, paddingHorizontal:12, borderRadius:8, alignItems:'center', minWidth:90 },
+  btnAlt: { backgroundColor:'#4FC1E9' },
+  btnAlt2: { backgroundColor:'#FF9500' },
+  btnText: { color:'#fff', fontWeight:'700' },
+  result: { marginTop:10, padding:10, backgroundColor:'#f0f8ff', borderRadius:8 },
+  resultText: { fontSize:16, color:'#2E7D32', fontWeight:'600', marginBottom:4 },
+  sub: { fontWeight:'700', marginTop:6, marginBottom:6 },
+  toolRow: { paddingVertical:4, borderBottomWidth:0.5, borderColor:'#eee' },
+  checkRow: { paddingVertical:6, borderBottomWidth:0.5, borderColor:'#f0f0f0' },
+  project: { padding:8, borderBottomWidth:0.5, borderColor:'#eee' }
+});
